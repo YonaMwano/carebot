@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareBot | Doctor-Assisted Chat</title>
+    <meta
+      name="description"
+      content="CareBot is a safe medical chat assistant offering general symptom guidance and over-the-counter support."
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="container mx-auto px-4 py-4 flex items-center justify-between">
+          <div class="brand-wrap d-flex align-items-center gap-3">
+            <div class="brand-mark">C</div>
+            <div>
+              <div class="brand-name">CareBot</div>
+              <div class="brand-tag">Doctor-Assisted Guidance</div>
+            </div>
+          </div>
+          <div class="status-pill">
+            <span class="live-dot"></span>
+            Online support
+          </div>
+        </div>
+      </header>
+
+      <main class="container mx-auto px-4 py-5">
+        <section class="hero mb-5">
+          <div class="hero-inner rounded-4">
+            <div class="row align-items-center g-4">
+              <div class="col-lg-7">
+                <span class="eyebrow">Safe, supportive clinical guidance</span>
+                <h1>Ask about symptoms, recovery, and general wellness.</h1>
+                <p>
+                  CareBot provides general symptom guidance, helps with common home-care steps,
+                  and supports safe over-the-counter suggestions while encouraging medical review when needed.
+                </p>
+                <div class="quick-actions d-flex flex-wrap gap-2 mt-3">
+                  <button class="quick-chip" type="button">Headache</button>
+                  <button class="quick-chip" type="button">Fever</button>
+                  <button class="quick-chip" type="button">Stomach upset</button>
+                  <button class="quick-chip" type="button">Cold symptoms</button>
+                </div>
+              </div>
+              <div class="col-lg-5">
+                <div class="stat-card">
+                  <div class="mini-label">Care safety</div>
+                  <ul>
+                    <li>General symptom check</li>
+                    <li>OTC-safe options only</li>
+                    <li>Emergency escalation</li>
+                    <li>Doctor review guidance</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="chat-layout">
+          <div class="row g-4">
+            <div class="col-lg-8">
+              <div class="chat-card">
+                <div class="chat-header">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="assistant-avatar">C</div>
+                    <div>
+                      <h2>CareBot</h2>
+                      <p>Always supportive • Safety-first guidance</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="chatMessages" class="chat-messages">
+                  <div class="message-row assistant">
+                    <div class="message-bubble">
+                      Hi! I'm CareBot. Tell me what symptoms you're experiencing, and I'll share general guidance and safe next steps. I'm not a substitute for a real doctor.
+                    </div>
+                  </div>
+                </div>
+
+                <form id="chatForm" class="chat-form">
+                  <div class="input-group">
+                    <input
+                      id="userInput"
+                      type="text"
+                      class="form-control"
+                      placeholder="Describe your symptoms or ask a health question..."
+                      aria-label="Ask CareBot"
+                      autocomplete="off"
+                    />
+                    <button type="submit" class="btn btn-primary send-btn">Send</button>
+                  </div>
+                  <div id="errorAlert" class="alert alert-danger mt-2" style="display: none;"></div>
+                </form>
+              </div>
+            </div>
+
+            <div class="col-lg-4">
+              <aside class="side-panel">
+                <div class="side-block">
+                  <div class="block-title">When to seek urgent care</div>
+                  <ul>
+                    <li>Chest pain or breathing trouble</li>
+                    <li>Severe bleeding</li>
+                    <li>Confusion, fainting, or seizure</li>
+                    <li>Severe allergic reaction</li>
+                  </ul>
+                </div>
+
+                <div class="side-block">
+                  <div class="block-title">Safe guidance includes</div>
+                  <ul>
+                    <li>Hydration and rest</li>
+                    <li>Common OTC remedies when appropriate</li>
+                    <li>Medical review for worsening symptoms</li>
+                    <li>Professional consultation before medicines</li>
+                  </ul>
+                </div>
+
+                <div class="side-block warning-block">
+                  <div class="block-title">Important</div>
+                  <p>
+                    This assistant is for general information only. It does not diagnose conditions or replace a licensed clinician.
+                  </p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>
