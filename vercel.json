@@ -1,20 +1,19 @@
 {
-  "version": 2,                          // Vercel v2 runtime
+  "version": 2,
   "builds": [
     {
       "src": "app.py",
-      "use": "@vercel/python"            // Uses Python runtime
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "15mb",
+        "runtime": "python3.11"
+      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "app.py"                   // Routes all requests to Flask app
+      "dest": "app.py"
     }
-  ],
-  "env": {                               // Environment variables
-    "GROQ_API_KEY": "@groq_api_key",
-    "GROQ_MODEL": "openai/gpt-oss-120b",
-    "SECRET_KEY": "@secret_key"
-  }
+  ]
 }
