@@ -13,18 +13,30 @@ app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "carebot-secret-key")
 app.config["JSON_SORT_KEYS"] = False
 app.config["JSONIFY_PRETTYPRINT_REGULAR"] = False
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+# Get API key from environment
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 MODEL_NAME = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
-print(f"[STARTUP] API Key: {GROQ_API_KEY[:20]}...")
+print("=" * 60)
+print("CareBot Medical Assistant - Startup")
+print("=" * 60)
 print(f"[STARTUP] Model: {MODEL_NAME}")
+print(f"[STARTUP] API Key Status: {'✓ Present' if GROQ_API_KEY else '✗ Missing'}")
 
-try:
-    client = Groq(api_key=GROQ_API_KEY)
-    print("[STARTUP] Groq client initialized successfully")
-except Exception as e:
-    print(f"[ERROR] Failed to initialize Groq client: {e}")
+if not GROQ_API_KEY:
+    print("[ERROR] GROQ_API_KEY environment variable is not set!")
+    print("[ERROR] Please set GROQ_API_KEY in your environment or .env file")
     client = None
+else:
+    print(f"[STARTUP] API Key (first 20 chars): {GROQ_API_KEY[:20]}...")
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        print("[STARTUP] ✓ Groq client initialized successfully")
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize Groq client: {e}")
+        client = None
+
+print("=" * 60)
 
 SYSTEM_PROMPT = """You are CareBot, a safe medical assistant for general health information and symptom guidance.
 
@@ -164,7 +176,10 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
         )
 
     if not client:
-        return "The Groq API client is not initialized. Please check your API key and try again."
+        return (
+            "The Groq API client is not initialized. Please ensure your GROQ_API_KEY environment variable is set correctly. "
+            "Contact the administrator to verify the API key configuration."
+        )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -177,8 +192,8 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
     messages.append({"role": "user", "content": user_message})
 
     try:
-        print(f"[API] Calling Groq with model: {MODEL_NAME}")
-        print(f"[API] Calling Groq with {len(messages)} messages")
+        print(f"[API] Calling Groq API with model: {MODEL_NAME}")
+        print(f"[API] Message count: {len(messages)}")
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,
@@ -187,11 +202,17 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
         )
 
         reply = completion.choices[0].message.content.strip()
-        print(f"[API] Groq response received: {reply[:50]}...")
+        print(f"[API] ✓ Response received: {reply[:50]}...")
         return sanitize_reply(reply, user_message)
     except Exception as e:
         print(f"[ERROR] Groq API Error: {str(e)}")
-        return f"I encountered an error connecting to the medical AI service. Please try again in a moment. Error: {str(e)}"
+        error_msg = str(e)
+        if "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+            return "Authentication error with Groq API. Please check your API key is valid."
+        elif "rate" in error_msg.lower():
+            return "Groq API rate limit reached. Please try again in a moment."
+        else:
+            return f"Error connecting to AI service: {error_msg}. Please try again."
 
 
 @app.route("/", methods=["GET"])
@@ -206,7 +227,8 @@ def health() -> Any:
     response = {
         "status": "ok",
         "model": MODEL_NAME,
-        "timestamp": __import__("datetime").datetime.now().isoformat()
+        "api_key_present": bool(GROQ_API_KEY),
+        "client_initialized": client is not None,
     }
     return jsonify(response)
 
@@ -248,7 +270,7 @@ def chat() -> Any:
 
         SESSION_HISTORY[session_id] = history
 
-        print(f"[CHAT] Reply generated successfully. New history length: {len(history)}")
+        print(f"[CHAT] ✓ Reply generated. New history length: {len(history)}")
 
         # Return proper JSON response
         response_data = {
@@ -257,7 +279,7 @@ def chat() -> Any:
             "status": "success"
         }
 
-        print(f"[RESPONSE] Sending JSON response")
+        print(f"[RESPONSE] ✓ Sending JSON response")
         return jsonify(response_data), 200
 
     except Exception as e:
@@ -288,10 +310,11 @@ def server_error(error: Any) -> Any:
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("CareBot Medical Assistant")
-    print("=" * 60)
-    print(f"Starting on http://0.0.0.0:5000")
-    print(f"Model: {MODEL_NAME}")
-    print("=" * 60)
+    if not GROQ_API_KEY:
+        print("\n⚠️  WARNING: GROQ_API_KEY is not set!")
+        print("The app will start but API calls will fail.")
+        print("Set GROQ_API_KEY environment variable and restart.")
+    
+    print("\n🚀 Starting CareBot on http://0.0.0.0:5000")
+    print("Press Ctrl+C to stop\n")
     app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
