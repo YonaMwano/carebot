@@ -21,37 +21,61 @@ print("=" * 70, file=sys.stderr)
 
 # Print all environment variables that contain API or GROQ
 for key, value in os.environ.items():
-    if 'GROQ' in key.upper() or 'API' in key.upper():
+    if "GROQ" in key.upper() or "API" in key.upper():
         if value:
-            print(f"✓ {key}: {value[:50]}..." if len(value) > 50 else f"✓ {key}: {value}", file=sys.stderr)
+            print(
+                f"✓ {key}: {value[:50]}..." if len(value) > 50 else f"✓ {key}: {value}",
+                file=sys.stderr,
+            )
         else:
             print(f"✗ {key}: (empty)", file=sys.stderr)
 
 print("=" * 70, file=sys.stderr)
 
 # Get environment variables - with fallback for Vercel
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
+# Strip whitespace/newlines that sometimes appear when pasting into Vercel dashboard
+_raw_key = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key") or ""
+GROQ_API_KEY = _raw_key.strip() if _raw_key else None
 MODEL_NAME = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
-print(f"\n[INIT] GROQ_API_KEY: {GROQ_API_KEY[:30] if GROQ_API_KEY else 'NOT SET'}...", file=sys.stderr)
+print(
+    f"\n[INIT] GROQ_API_KEY set: {bool(GROQ_API_KEY)}  length: {len(GROQ_API_KEY) if GROQ_API_KEY else 0}",
+    file=sys.stderr,
+)
 print(f"[INIT] GROQ_MODEL: {MODEL_NAME}", file=sys.stderr)
 
-# Initialize Groq client
+# Client is created lazily on first request (more reliable on Vercel serverless)
 client = None
+_client_error: str | None = None
 
-if GROQ_API_KEY and GROQ_API_KEY.strip():
+
+def get_groq_client() -> Groq | None:
+    """Lazy-create the Groq client. Returns None and stores the error if creation fails."""
+    global client, _client_error
+
+    if client is not None:
+        return client
+
+    if not GROQ_API_KEY:
+        _client_error = "GROQ_API_KEY environment variable is missing or empty"
+        print(f"[CLIENT] ✗ {_client_error}", file=sys.stderr)
+        return None
+
     try:
-        print(f"[INIT] Creating Groq client with key length: {len(GROQ_API_KEY.strip())}", file=sys.stderr)
-        client = Groq(api_key=GROQ_API_KEY.strip())
-        print("[INIT] ✓ Groq client created", file=sys.stderr)
+        print(f"[CLIENT] Creating Groq client (key length={len(GROQ_API_KEY)})", file=sys.stderr)
+        client = Groq(api_key=GROQ_API_KEY)
+        _client_error = None
+        print("[CLIENT] ✓ Groq client created successfully", file=sys.stderr)
+        return client
     except Exception as e:
-        print(f"[INIT] ✗ Client creation failed: {type(e).__name__}: {e}", file=sys.stderr)
+        _client_error = f"{type(e).__name__}: {e}"
+        print(f"[CLIENT] ✗ Client creation failed: {_client_error}", file=sys.stderr)
         import traceback
+
         traceback.print_exc(file=sys.stderr)
         client = None
-else:
-    print("[INIT] ✗ GROQ_API_KEY not found or empty!", file=sys.stderr)
-    client = None
+        return None
+
 
 print("=" * 70, file=sys.stderr)
 
@@ -134,7 +158,9 @@ def contains_banned_drug(text: str) -> bool:
 
 
 def strip_exact_dosage(text: str) -> str:
-    text = re.sub(r"\b\d+\s*(mg|mcg|g|ml)\b", "[dose omitted for safety]", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b\d+\s*(mg|mcg|g|ml)\b", "[dose omitted for safety]", text, flags=re.IGNORECASE
+    )
     text = re.sub(
         r"\b\d+\s*(times\s+a\s+day|daily|every\s+\d+\s+hours|per\s+day|tablets?\s+per\s+day)\b",
         "as directed by a clinician",
@@ -176,7 +202,11 @@ def sanitize_reply(reply: str, user_message: str) -> str:
     cleaned = cleaned.strip()
     cleaned = add_disclaimer(cleaned)
 
-    if "doctor" not in cleaned.lower() and "urgent care" not in cleaned.lower() and "consult" not in cleaned.lower():
+    if (
+        "doctor" not in cleaned.lower()
+        and "urgent care" not in cleaned.lower()
+        and "consult" not in cleaned.lower()
+    ):
         cleaned += "\n\nIf symptoms worsen, last more than a few days, or you have any concern, speak with a licensed doctor or healthcare professional."
 
     return cleaned
@@ -192,8 +222,9 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
             user_message,
         )
 
-    if not client:
-        print("[ERROR] Groq client is None! Cannot process message.", file=sys.stderr)
+    groq_client = get_groq_client()
+    if not groq_client:
+        print(f"[ERROR] Groq client unavailable. Reason: {_client_error}", file=sys.stderr)
         return (
             "⚠️ The medical AI service is temporarily unavailable. "
             "Please refresh the page and try again. If the problem persists, "
@@ -212,7 +243,7 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
 
     try:
         print(f"[API] Calling Groq API: {MODEL_NAME}", file=sys.stderr)
-        completion = client.chat.completions.create(
+        completion = groq_client.chat.completions.create(
             model=MODEL_NAME,
             messages=messages,
             temperature=0.5,
@@ -225,6 +256,7 @@ def generate_response(user_message: str, history: list[dict[str, str]]) -> str:
     except Exception as e:
         print(f"[ERROR] Groq API call failed: {type(e).__name__}: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc(file=sys.stderr)
         return f"Sorry, I encountered an error: {str(e)}. Please try again in a moment."
 
@@ -238,16 +270,20 @@ def home() -> str:
 @app.route("/api/health", methods=["GET"])
 def health() -> Any:
     print("[REQUEST] GET /api/health", file=sys.stderr)
-    
+
+    # Force a client creation attempt so health reflects real status
+    groq_client = get_groq_client()
+
     health_data = {
-        "status": "ok",
+        "status": "ok" if groq_client else "degraded",
         "model": MODEL_NAME,
         "groq_key_set": bool(GROQ_API_KEY),
-        "groq_key_length": len(GROQ_API_KEY.strip()) if GROQ_API_KEY else 0,
-        "client_ready": client is not None,
+        "groq_key_length": len(GROQ_API_KEY) if GROQ_API_KEY else 0,
+        "client_ready": groq_client is not None,
+        "client_error": _client_error,
         "environment": os.getenv("ENVIRONMENT", "production"),
     }
-    
+
     print(f"[HEALTH] {health_data}", file=sys.stderr)
     return jsonify(health_data)
 
@@ -256,30 +292,35 @@ def health() -> Any:
 def debug() -> Any:
     """Debug endpoint to check API key status"""
     print("[REQUEST] GET /api/debug", file=sys.stderr)
-    
-    api_key = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key")
-    
+
+    groq_client = get_groq_client()
+    api_key = GROQ_API_KEY
+
     debug_info = {
         "groq_api_key_env": bool(os.getenv("GROQ_API_KEY")),
         "groq_api_key_alt_env": bool(os.getenv("groq_api_key")),
         "api_key_available": bool(api_key),
-        "api_key_length": len(api_key.strip()) if api_key else 0,
-        "client_initialized": client is not None,
+        "api_key_length": len(api_key) if api_key else 0,
+        "client_initialized": groq_client is not None,
+        "client_error": _client_error,
         "model": MODEL_NAME,
         "python_version": sys.version,
         "groq_installed": True,
     }
-    
+
     if api_key:
-        debug_info["api_key_preview"] = f"{api_key[:20]}...{api_key[-10:]}"
-    
+        # Show only a safe preview (first 8 + last 4 chars)
+        debug_info["api_key_preview"] = (
+            f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "***"
+        )
+
     return jsonify(debug_info)
 
 
 @app.route("/api/chat", methods=["POST"])
 def chat() -> Any:
     print("[REQUEST] POST /api/chat", file=sys.stderr)
-    
+
     try:
         if not request.is_json:
             print("[ERROR] Request is not JSON", file=sys.stderr)
@@ -295,19 +336,23 @@ def chat() -> Any:
             print("[ERROR] Empty message", file=sys.stderr)
             return jsonify({"error": "Please enter a message before sending.", "status": "error"}), 400
 
-        # Critical check
-        if not client:
+        # Critical check – lazy init so we get a real error message
+        groq_client = get_groq_client()
+        if not groq_client:
             print("[CRITICAL] Client is None! Groq not initialized.", file=sys.stderr)
             print(f"[CRITICAL] GROQ_API_KEY available: {bool(GROQ_API_KEY)}", file=sys.stderr)
-            return jsonify({
-                "error": "❌ API service unavailable. The Groq API client failed to initialize.",
-                "status": "error",
-                "detail": "Please refresh the page. If this persists, contact support.",
-            }), 503
+            print(f"[CRITICAL] Client error: {_client_error}", file=sys.stderr)
+            return jsonify(
+                {
+                    "error": "❌ API service unavailable. The Groq API client failed to initialize.",
+                    "status": "error",
+                    "detail": _client_error or "Please refresh the page. If this persists, contact support.",
+                }
+            ), 503
 
         history = SESSION_HISTORY.get(session_id, [])
         print(f"[CHAT] History length: {len(history)}", file=sys.stderr)
-        
+
         reply = generate_response(message, history)
 
         history.append({"user": message, "assistant": reply})
@@ -316,21 +361,15 @@ def chat() -> Any:
 
         SESSION_HISTORY[session_id] = history
 
-        print(f"[CHAT] ✓ Response sent", file=sys.stderr)
-        return jsonify({
-            "reply": reply,
-            "session_id": session_id,
-            "status": "success"
-        }), 200
+        print("[CHAT] ✓ Response sent", file=sys.stderr)
+        return jsonify({"reply": reply, "session_id": session_id, "status": "success"}), 200
 
     except Exception as e:
         print(f"[ERROR] Chat exception: {type(e).__name__}: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc(file=sys.stderr)
-        return jsonify({
-            "error": f"Server error: {str(e)}",
-            "status": "error"
-        }), 500
+        return jsonify({"error": f"Server error: {str(e)}", "status": "error"}), 500
 
 
 @app.errorhandler(404)
@@ -340,7 +379,7 @@ def not_found(error: Any) -> Any:
 
 @app.errorhandler(500)
 def server_error(error: Any) -> Any:
-    print(f"[ERROR] 500 Server Error", file=sys.stderr)
+    print("[ERROR] 500 Server Error", file=sys.stderr)
     return jsonify({"error": "Internal server error", "status": "error"}), 500
 
 
